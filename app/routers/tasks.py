@@ -95,7 +95,12 @@ async def list_tasks(
     rows = (
         await db.scalars(base.order_by(Task.id).limit(limit).offset(offset))
     ).all()
-    return TaskList(items=list(rows), total=total or 0, limit=limit, offset=offset)
+    return TaskList(
+        items=[TaskRead.model_validate(row) for row in rows],
+        total=total or 0,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.get("/stats", operation_id="task_stats")

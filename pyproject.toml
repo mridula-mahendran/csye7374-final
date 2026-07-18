@@ -23,6 +23,10 @@ filterwarnings = ["ignore::DeprecationWarning"]
 [tool.coverage.run]
 source = ["app"]
 omit = ["app/__init__.py", "app/routers/__init__.py"]
+# SQLAlchemy's async layer runs DB I/O inside greenlets (greenlet_spawn). Without
+# declaring greenlet concurrency, coverage drops the trace function across the
+# greenlet switch and under-counts every line that runs after a DB `await`.
+concurrency = ["thread", "greenlet"]
 
 [tool.coverage.report]
 show_missing = true

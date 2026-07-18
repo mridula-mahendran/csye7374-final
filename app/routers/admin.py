@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.deps import require_admin
 from app.models import Task, User
-from app.schemas import TaskList
+from app.schemas import TaskList, TaskRead
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -25,4 +25,9 @@ async def admin_list_tasks(
     rows = (
         await db.scalars(select(Task).order_by(Task.id).limit(limit).offset(offset))
     ).all()
-    return TaskList(items=list(rows), total=total or 0, limit=limit, offset=offset)
+    return TaskList(
+        items=[TaskRead.model_validate(row) for row in rows],
+        total=total or 0,
+        limit=limit,
+        offset=offset,
+    )
