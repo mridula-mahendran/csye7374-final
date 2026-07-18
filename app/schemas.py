@@ -1,15 +1,37 @@
 """Pydantic v2 schemas for request validation and response serialization."""
 
 from datetime import datetime
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field
 
 from app.models import Role, Status
 
 
+def _reject_unstorable(value: str) -> str:
+    """Reject strings Postgres/asyncpg cannot persist.
+
+    A NUL byte (0x00) or a lone UTF-16 surrogate raises at the database driver
+    on INSERT, which surfaces as a 500. Rejecting them here turns those inputs
+    into a clean 422 validation error. Normal non-ASCII text is unaffected.
+    """
+    if "\x00" in value:
+        raise ValueError("must not contain NUL (0x00) characters")
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise ValueError("must be valid UTF-8 text") from exc
+    return value
+
+
+# A str that is guaranteed safe to store in Postgres. The validator only runs on
+# the str branch, so `SafeStr | None` leaves None untouched.
+SafeStr = Annotated[str, AfterValidator(_reject_unstorable)]
+
+
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=8, max_length=128)
+    password: SafeStr = Field(min_length=8, max_length=128)
 
 
 class UserRead(BaseModel):
@@ -27,15 +49,15 @@ class Token(BaseModel):
 
 
 class TaskCreate(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
-    description: str | None = Field(default=None, max_length=2000)
+    title: SafeStr = Field(min_length=1, max_length=200)
+    description: SafeStr | None = Field(default=None, max_length=2000)
     status: Status = Status.todo
     priority: int = Field(default=3, ge=1, le=5)
 
 
 class TaskUpdate(BaseModel):
-    title: str | None = Field(default=None, min_length=1, max_length=200)
-    description: str | None = Field(default=None, max_length=2000)
+    title: SafeStr | None = Field(default=None, min_length=1, max_length=200)
+    description: SafeStr | None = Field(default=None, max_length=2000)
     status: Status | None = None
     priority: int | None = Field(default=None, ge=1, le=5)
 

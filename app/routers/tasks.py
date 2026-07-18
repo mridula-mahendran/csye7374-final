@@ -14,7 +14,7 @@ Notable design choices that matter for the testing pipeline:
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +25,17 @@ from app.rules import is_actionable
 from app.schemas import TaskCreate, TaskList, TaskRead, TaskUpdate
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+# Postgres INTEGER upper bound. Path/query ids above this overflow the column and
+# would surface as a 500 (asyncpg NumericValueOutOfRange); we reject them as 422
+# validation errors instead so the API never returns a server error for them.
+MAX_INT = 2_147_483_647
+
+# Error responses declared on the operations so the OpenAPI contract matches the
+# API's real behavior. Without these, Schemathesis' status_code_conformance check
+# fails: the app legitimately returns these codes but the schema never mentions them.
+TASK_NOT_FOUND: dict = {404: {"description": "Task not found"}}
+MALFORMED_BODY: dict = {400: {"description": "Malformed request body"}}
 
 # OpenAPI links attached to the 201 response of create_task. Schemathesis reads
 # these to build stateful workflows (create -> get -> update -> delete).
@@ -63,7 +74,7 @@ async def _get_owned_task(task_id: int, user: User, db: AsyncSession) -> Task:
     response_model=TaskRead,
     status_code=status.HTTP_201_CREATED,
     operation_id="create_task",
-    responses={201: {"description": "Task created", "links": CREATE_LINKS}},
+    responses={201: {"description": "Task created", "links": CREATE_LINKS}, **MALFORMED_BODY},
 )
 async def create_task(
     payload: TaskCreate,
@@ -85,7 +96,7 @@ async def list_tasks(
     db: Annotated[AsyncSession, Depends(get_db)],
     status_filter: Annotated[Status | None, Query(alias="status")] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    offset: Annotated[int, Query(ge=0, le=MAX_INT)] = 0,
 ) -> TaskList:
     base = select(Task).where(Task.owner_id == user.id)
     if status_filter is not None:
@@ -113,24 +124,39 @@ async def task_stats(
     return {"total": len(rows), "actionable": actionable}
 
 
-@router.get("/{task_id}", response_model=TaskRead, operation_id="get_task")
+@router.get(
+    "/{task_id}",
+    response_model=TaskRead,
+    operation_id="get_task",
+    responses=TASK_NOT_FOUND,
+)
 async def get_task(
-    task_id: int,
+    task_id: Annotated[int, Path(ge=1, le=MAX_INT)],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Task:
     return await _get_owned_task(task_id, user, db)
 
 
-@router.patch("/{task_id}", response_model=TaskRead, operation_id="update_task")
+@router.patch(
+    "/{task_id}",
+    response_model=TaskRead,
+    operation_id="update_task",
+    responses={**TASK_NOT_FOUND, **MALFORMED_BODY},
+)
 async def update_task(
-    task_id: int,
+    task_id: Annotated[int, Path(ge=1, le=MAX_INT)],
     payload: TaskUpdate,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Task:
     task = await _get_owned_task(task_id, user, db)
+    # exclude_unset ignores fields the client did not send. We also skip explicit
+    # nulls: the update schema types these fields as optional, but the columns are
+    # NOT NULL, so setting one to null would raise an IntegrityError (a 500).
     for key, value in payload.model_dump(exclude_unset=True).items():
+        if value is None:
+            continue
         setattr(task, key, value)
     await db.commit()
     await db.refresh(task)
@@ -138,10 +164,13 @@ async def update_task(
 
 
 @router.delete(
-    "/{task_id}", status_code=status.HTTP_204_NO_CONTENT, operation_id="delete_task"
+    "/{task_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    operation_id="delete_task",
+    responses=TASK_NOT_FOUND,
 )
 async def delete_task(
-    task_id: int,
+    task_id: Annotated[int, Path(ge=1, le=MAX_INT)],
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Response:

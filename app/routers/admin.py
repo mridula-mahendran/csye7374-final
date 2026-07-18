@@ -14,12 +14,17 @@ from app.schemas import TaskList, TaskRead
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-@router.get("/tasks", response_model=TaskList, operation_id="admin_list_tasks")
+@router.get(
+    "/tasks",
+    response_model=TaskList,
+    operation_id="admin_list_tasks",
+    responses={403: {"description": "Admin only"}},
+)
 async def admin_list_tasks(
     admin: Annotated[User, Depends(require_admin)],
     db: Annotated[AsyncSession, Depends(get_db)],
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
-    offset: Annotated[int, Query(ge=0)] = 0,
+    offset: Annotated[int, Query(ge=0, le=2_147_483_647)] = 0,
 ) -> TaskList:
     total = await db.scalar(select(func.count()).select_from(Task))
     rows = (

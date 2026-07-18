@@ -2,7 +2,10 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from app.database import Base, engine
 from app.routers import admin, auth, tasks, users
@@ -27,6 +30,22 @@ app = FastAPI(
     ),
     lifespan=lifespan,
 )
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    # FastAPI's default 422 handler echoes the raw offending input back in the
+    # error body. Fuzzed inputs can contain lone UTF-16 surrogates, which are not
+    # UTF-8 encodable, so rendering that echo crashes the response with a 500.
+    # Drop `input`/`ctx` so the rejection is always a clean, serializable 422
+    # (this also matches the documented HTTPValidationError schema exactly).
+    cleaned = [
+        {k: v for k, v in err.items() if k not in ("input", "ctx")}
+        for err in exc.errors()
+    ]
+    return JSONResponse(status_code=422, content={"detail": jsonable_encoder(cleaned)})
+
 
 app.include_router(auth.router)
 app.include_router(users.router)

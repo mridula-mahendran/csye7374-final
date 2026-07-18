@@ -20,6 +20,10 @@ router = APIRouter(prefix="/auth", tags=["auth"])
     response_model=UserRead,
     status_code=status.HTTP_201_CREATED,
     operation_id="register_user",
+    responses={
+        409: {"description": "Email already registered"},
+        400: {"description": "Malformed request body"},
+    },
 )
 async def register(
     payload: UserCreate,
@@ -35,7 +39,15 @@ async def register(
     return user
 
 
-@router.post("/token", response_model=Token, operation_id="login")
+@router.post(
+    "/token",
+    response_model=Token,
+    operation_id="login",
+    responses={
+        401: {"description": "Incorrect email or password"},
+        400: {"description": "Malformed request body"},
+    },
+)
 async def login(
     form: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Annotated[AsyncSession, Depends(get_db)],

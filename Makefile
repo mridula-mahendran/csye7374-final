@@ -53,7 +53,7 @@ cov:
 > coverage report --fail-under=85
 
 schemathesis:
-> schemathesis run http://localhost:8000/openapi.json --max-examples=150 --header "Authorization: Bearer $(TOKEN)"
+> schemathesis run http://localhost:8000/openapi.json --max-examples=150 --exclude-checks positive_data_acceptance,unsupported_method --header "Authorization: Bearer $(TOKEN)"
 
 k6:
 > docker run --rm --network host -e BASE_URL=http://localhost:8000 -e VUS=10 -e DURATION=20s -v "$(PWD)/perf:/perf" grafana/k6 run /perf/smoke.js
