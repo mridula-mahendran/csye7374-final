@@ -1,0 +1,42 @@
+[project]
+name = "csye7374-ci-testing"
+version = "1.0.0"
+description = "Tasks API used as the system under test for a CI/CD testing pipeline"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# Pyflakes (F) catches real errors like unused/undefined names; bugbear (B)
+# catches common bug patterns. B008 is ignored because FastAPI intentionally
+# uses callables (Depends/Query) in argument defaults.
+select = ["F", "B"]
+ignore = ["B008"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/__init__.py", "app/routers/__init__.py"]
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+disallow_untyped_defs = false
+check_untyped_defs = false
+warn_unused_ignores = false
+
+[tool.mutmut]
+# Focus mutation testing on the pure, high-value logic. Mutating the whole
+# codebase is slow and produces noisy mutants in framework glue.
+paths_to_mutate = ["app/rules.py", "app/security.py"]
+tests_dir = "tests/"
+runner = "python -m pytest -q -x"

@@ -1,0 +1,51 @@
+name: Mutation Testing (nightly)
+
+# Mutation testing is expensive, so it runs on a schedule rather than on every
+# pull request. It is intentionally report-only: the recommended policy is
+# "no new survivors in protected modules" or "score must not drop below the
+# reviewed baseline", not a naive hard percentage gate. See the README.
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  mutmut:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: appdb_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TESTING: "1"
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/appdb_test
+      JWT_SECRET: ci-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run mutation testing
+        run: |
+          mutmut run || true
+          mutmut results || true
+      - name: Build HTML report
+        run: mutmut html || true
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: html/
