@@ -52,12 +52,18 @@ async def login(
     form: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Token:
+    invalid = HTTPException(
+        status_code=401,
+        detail="Incorrect email or password",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    # The login form takes a raw username (it does not go through SafeStr). A NUL
+    # byte can never match a stored email and would raise at the DB driver
+    # (asyncpg rejects NUL in text), so fail the login cleanly instead of 500ing.
+    if "\x00" in form.username:
+        raise invalid
     user = await db.scalar(select(User).where(User.email == form.username))
     if user is None or not verify_password(form.password, user.hashed_password):
-        raise HTTPException(
-            status_code=401,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise invalid
     token = create_access_token(sub=str(user.id), role=user.role.value)
     return Token(access_token=token)
