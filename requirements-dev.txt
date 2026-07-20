@@ -11,6 +11,9 @@ ruff>=0.5
 mypy>=1.10
 bandit>=1.7
 
-# Property-based API testing and mutation testing
+# Property-based API testing and mutation testing.
+# mutmut is pinned to the 2.x line: 3.x is a rewrite that renamed the config
+# keys (paths_to_mutate -> source_paths, tests_dir -> ...) and crashes on the
+# existing [tool.mutmut] config. 2.x works with the config and `mutmut html`.
 schemathesis>=3.30
-mutmut>=3.0
+mutmut>=2.4,<3
