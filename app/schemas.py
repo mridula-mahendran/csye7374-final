@@ -3,9 +3,27 @@
 from datetime import datetime
 from typing import Annotated
 
+from email_validator import validate_email
 from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field
 
 from app.models import Role, Status
+
+
+def _to_ascii_email(value: str) -> str:
+    """Return the ASCII (punycode) form of an email address.
+
+    Pydantic's ``EmailStr`` normalizes internationalized domains to Unicode
+    (``foo@hz.xn--h2brj9c`` -> ``foo@hz.भारत``). That value then violates the
+    response's own ``format: email`` contract, which expects an ASCII address.
+    Storing and returning the ASCII form keeps the API consistent with its
+    schema and makes stored emails canonical for login lookups.
+    """
+    return validate_email(value, check_deliverability=False).ascii_email or value
+
+
+# EmailStr validates and normalizes; the AfterValidator then pins it to ASCII.
+# The JSON schema stays ``{type: string, format: email}``.
+AsciiEmail = Annotated[EmailStr, AfterValidator(_to_ascii_email)]
 
 
 def _reject_unstorable(value: str) -> str:
@@ -30,7 +48,7 @@ SafeStr = Annotated[str, AfterValidator(_reject_unstorable)]
 
 
 class UserCreate(BaseModel):
-    email: EmailStr
+    email: AsciiEmail
     password: SafeStr = Field(min_length=8, max_length=128)
 
 
@@ -38,7 +56,7 @@ class UserRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
-    email: EmailStr
+    email: AsciiEmail
     role: Role
     created_at: datetime
 
