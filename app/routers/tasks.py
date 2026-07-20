@@ -83,6 +83,7 @@ async def create_task(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> Task:
     task = Task(owner_id=user.id, **payload.model_dump())
+    _ = payload.title.encode("ascii")   # BUG: crashes on any non-ASCII title
     db.add(task)
     await db.commit()
     await db.refresh(task)
