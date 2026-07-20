@@ -12,6 +12,7 @@ Notable design choices that matter for the testing pipeline:
   ``is_actionable`` rule, which is the mutation-testing target (Bug 3).
 """
 
+import asyncio
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
@@ -98,6 +99,7 @@ async def list_tasks(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0, le=MAX_INT)] = 0,
 ) -> TaskList:
+    await asyncio.sleep(0.8)   # BUG: 800ms latency regression
     base = select(Task).where(Task.owner_id == user.id)
     if status_filter is not None:
         base = base.where(Task.status == status_filter)
